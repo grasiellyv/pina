@@ -1,0 +1,21 @@
+{
+  "name": "pina-portal",
+  "version": "1.0.0",
+  "description": "Portal confidencial Pina",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grasiellyv/pina.git"
+  },
+  "bugs": {
+    "url": "https://github.com/grasiellyv/pina/issues"
+  },
+  "homepage": "https://github.com/grasiellyv/pina#readme",
+  "devDependencies": {
+    "wrangler": "^4.145.0"
+  },
+  "private": true
+}

@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Pina · Material confidencial</title>
+  <link rel="icon" href="/logo-pina.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    img, canvas { -webkit-user-drag: none; user-drag: none; pointer-events: none; }
+
+    #viewer { position: fixed; inset: 0; display: flex; flex-direction: column; }
+    .bar {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line);
+    }
+    .bar .logo { height: 30px; }
+    .bar .title { font-weight: 600; font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar .meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .badge { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--teal); border: 1px solid var(--teal); border-radius: 99px; padding: 3px 9px; }
+    #scroller { flex: 1; overflow-y: auto; padding: 28px 16px 60px; }
+    .page {
+      position: relative; margin: 0 auto 24px; max-width: 1100px;
+      background: #fff; border-radius: 6px; box-shadow: 0 6px 30px rgba(29,43,41,.10); overflow: hidden;
+    }
+    .page canvas { display: block; width: 100%; height: 100%; }
+    .page .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+
+    /* Escudo: esconde o conteúdo quando a janela perde o foco, imprime, etc. */
+    #shield {
+      position: fixed; inset: 0; z-index: 50;
+      background: var(--bg); display: none; place-items: center; text-align: center; padding: 24px;
+    }
+    body.shielded #shield { display: grid; }
+    body.shielded #scroller { visibility: hidden; filter: blur(40px); }
+    #shield .logo { margin: 0 auto 18px; height: 40px; }
+    #shield p { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+
+    @media print {
+      body * { display: none !important; }
+      body::before { content: "Impressão desabilitada — material confidencial."; display: block; padding: 40px; font: 16px sans-serif; }
+    }
+    @media (max-width: 600px) {
+      .bar .meta, .badge { display: none; }
+      #scroller { padding: 12px 8px 40px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Login -->
+  <main id="login" class="center hidden">
+    <form class="card" id="loginForm" autocomplete="off">
+      <img class="logo" src="/logo-pina.png" alt="Pina" />
+      <h1>Material confidencial</h1>
+      <p class="sub">Digite a senha de acesso que você recebeu para visualizar o documento.</p>
+      <label for="pw">Senha</label>
+      <input id="pw" type="password" required autofocus />
+      <button class="btn block" id="loginBtn" type="submit">Acessar</button>
+      <div class="error" id="loginErr"></div>
+      <p class="note">Por segurança, cada acesso é registrado (data, horário, IP e rede).<br />O download, a impressão e a cópia estão desabilitados.</p>
+    </form>
+  </main>
+
+  <!-- Visualizador -->
+  <section id="viewer" class="hidden">
+    <header class="bar">
+      <img class="logo" src="/logo-pina.png" alt="Pina" />
+      <div class="title" id="docTitle"></div>
+      <span class="badge">CONFIDENCIAL</span>
+      <span class="meta" id="docMeta"></span>
+      <button class="btn ghost small" id="logoutBtn">Sair</button>
+    </header>
+    <div id="scroller"></div>
+  </section>
+
+  <div id="shield">
+    <div>
+      <img class="logo" src="/logo-pina.png" alt="Pina" />
+      <p>Conteúdo oculto por segurança.</p>
+      <button class="btn" id="resumeBtn">Continuar visualizando</button>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    let doc = null, key = null, expiryTimer = null;
+
+    // ---------------- sessão ----------------
+    async function start() {
+      const r = await fetch("/api/doc", { credentials: "same-origin" });
+      if (r.ok) return openViewer(await r.json());
+      $("login").classList.remove("hidden");
+      $("viewer").classList.add("hidden");
+    }
+
+    $("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("loginErr").textContent = "";
+      $("loginBtn").disabled = true;
+      try {
+        const r = await fetch("/api/login", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: $("pw").value }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || "Não foi possível entrar.");
+        $("pw").value = "";
+        await start();
+      } catch (err) {
+        $("loginErr").textContent = err.message;
+      } finally {
+        $("loginBtn").disabled = false;
+      }
+    });
+
+    $("logoutBtn").addEventListener("click", logout);
+    async function logout() {
+      await fetch("/api/logout", { method: "POST" }).catch(() => {});
+      location.reload();
+    }
+
+    // ---------------- visualizador ----------------
+    function openViewer(d) {
+      doc = d;
+      key = Uint8Array.from(atob(d.key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+      $("login").classList.add("hidden");
+      $("viewer").classList.remove("hidden");
+      $("docTitle").textContent = d.title;
+      $("docMeta").textContent = `${d.pages} páginas`;
+      const scroller = $("scroller");
+      scroller.innerHTML = "";
+
+      const io = new IntersectionObserver((entries) => {
+        for (const en of entries) {
+          if (en.isIntersecting && !en.target.dataset.loaded) {
+            en.target.dataset.loaded = "1";
+            loadPage(en.target);
+          }
+        }
+      }, { root: scroller, rootMargin: "800px 0px" });
+
+      for (let i = 1; i <= d.pages; i++) {
+        const s = (d.sizes && d.sizes[i - 1]) || { w: 1600, h: 900 };
+        const el = document.createElement("div");
+        el.className = "page";
+        el.dataset.n = i;
+        el.style.aspectRatio = `${s.w} / ${s.h}`;
+        el.innerHTML = `<div class="loading">Carregando página ${i}…</div>`;
+        scroller.appendChild(el);
+        io.observe(el);
+      }
+
+      clearTimeout(expiryTimer);
+      expiryTimer = setTimeout(() => { alert("Sua sessão expirou. Digite a senha novamente."); logout(); }, Math.max(0, d.expiresAt - Date.now()));
+    }
+
+    async function loadPage(el) {
+      const n = el.dataset.n;
+      try {
+        const r = await fetch(`/api/page/${n}`, { cache: "no-store" });
+        if (r.status === 401) return logout();
+        if (!r.ok) throw new Error();
+        const bytes = new Uint8Array(await r.arrayBuffer());
+        for (let i = 0; i < bytes.length; i++) bytes[i] ^= key[i & 31];
+        const bmp = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
+        bytes.fill(0);
+        const c = document.createElement("canvas");
+        c.width = bmp.width; c.height = bmp.height;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+        watermark(ctx, c.width, c.height, n);
+        el.innerHTML = "";
+        el.appendChild(c);
+      } catch {
+        el.querySelector(".loading").textContent = "Não foi possível carregar esta página.";
+        delete el.dataset.loaded;
+      }
+    }
+
+    // Marca d'água gravada nos pixels: qualquer foto/print fica rastreável.
+    function watermark(ctx, w, h, n) {
+      const wm = doc.watermark;
+      const text = `CONFIDENCIAL · PINA · ${wm.ip} · ${wm.at} · ID ${wm.id}`;
+      const fs = Math.max(14, Math.round(w / 70));
+      ctx.save();
+      ctx.font = `600 ${fs}px "DM Sans", sans-serif`;
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate(-Math.PI / 7);
+      const tw = ctx.measureText(text).width + fs * 4;
+      const diag = Math.hypot(w, h);
+      for (let y = -diag; y < diag; y += fs * 5) {
+        const off = (y / (fs * 5)) % 2 ? tw / 2 : 0;
+        for (let x = -diag - off; x < diag; x += tw) {
+          // escuro + claro deslocado: aparece tanto em páginas claras quanto escuras
+          ctx.fillStyle = "rgba(20, 20, 20, 0.10)"; ctx.fillText(text, x, y);
+          ctx.fillStyle = "rgba(255, 255, 255, 0.10)"; ctx.fillText(text, x + 2, y + 2);
+        }
+      }
+      ctx.restore();
+      ctx.save();
+      ctx.font = `500 ${Math.round(fs * 0.8)}px "DM Sans", sans-serif`;
+      ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.40)"; ctx.fillText(`${text} · pág. ${n}`, w - fs, h - fs);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.40)"; ctx.fillText(`${text} · pág. ${n}`, w - fs + 1, h - fs + 1);
+      ctx.restore();
+    }
+
+    // ---------------- proteções ----------------
+    const shield = () => { if (doc) document.body.classList.add("shielded"); };
+    const unshield = () => document.body.classList.remove("shielded");
+    $("resumeBtn").addEventListener("click", unshield);
+
+    window.addEventListener("blur", shield);
+    document.addEventListener("visibilitychange", () => document.hidden && shield());
+    document.documentElement.addEventListener("mouseleave", () => { if (matchMedia("(hover: hover)").matches) shield(); });
+    window.addEventListener("beforeprint", shield);
+
+    ["contextmenu", "copy", "cut", "dragstart", "selectstart"].forEach((ev) =>
+      document.addEventListener(ev, (e) => { if (!e.target.closest || !e.target.closest("input")) e.preventDefault(); })
+    );
+
+    document.addEventListener("keydown", (e) => {
+      const k = (e.key || "").toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      if (k === "printscreen" || e.key === "Meta" || e.key === "OS" || (e.metaKey && e.shiftKey)) {
+        shield();
+        try { navigator.clipboard.writeText(""); } catch {}
+        e.preventDefault();
+        return;
+      }
+      if (
+        k === "f12" ||
+        (mod && ["s", "p", "u", "c", "a"].includes(k)) ||
+        (mod && e.shiftKey && ["i", "j", "c", "s"].includes(k)) ||
+        (e.metaKey && e.altKey && ["i", "j", "c"].includes(k))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+    document.addEventListener("keyup", (e) => {
+      if ((e.key || "").toLowerCase() === "printscreen") {
+        try { navigator.clipboard.writeText(""); } catch {}
+        shield();
+      }
+    });
+
+    start();
+  })();
+  </script>
+</body>
+</html>

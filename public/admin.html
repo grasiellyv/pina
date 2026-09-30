@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Pina · Painel</title>
+  <link rel="icon" href="/logo-pina.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+    .top { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+    .top .logo { height: 36px; }
+    .top .t { flex: 1; color: var(--muted); font-size: 14px; }
+    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin-bottom: 18px; }
+    .panel h2 { font-size: 16px; margin: 0 0 4px; }
+    .panel .desc { color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 1.5; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    .row > div { flex: 1; min-width: 180px; }
+    .status { font-size: 14px; padding: 12px 14px; background: #f7f5f1; border-radius: 10px; margin-bottom: 14px; line-height: 1.5; }
+    .status b { color: var(--teal-dark); }
+    .progress { height: 8px; background: #eee; border-radius: 99px; overflow: hidden; margin-top: 12px; }
+    .progress div { height: 100%; width: 0; background: var(--teal); transition: width .2s; }
+    .pw-box { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding: 16px; border: 1px dashed var(--teal); border-radius: 12px; background: #f1f8f7; }
+    .pw-box code { font-size: 22px; font-weight: 600; letter-spacing: .06em; color: var(--teal-dark); }
+    .warn { background: #fff6e5; border: 1px solid #f0d9a8; color: #7a5a14; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    .table-wrap { overflow-x: auto; }
+    .vpn-yes { color: var(--danger); font-weight: 600; }
+    .empty { color: var(--muted); font-size: 14px; padding: 14px 0; }
+    input[type="file"] { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <main id="login" class="center">
+    <form class="card" id="loginForm">
+      <img class="logo" src="/logo-pina.png" alt="Pina" />
+      <h1>Painel administrativo</h1>
+      <p class="sub">Área exclusiva para gerenciar o material e os acessos.</p>
+      <label for="pw">Senha de administradora</label>
+      <input id="pw" type="password" required autofocus />
+      <button class="btn block" type="submit">Entrar</button>
+      <div class="error" id="loginErr"></div>
+    </form>
+  </main>
+
+  <div id="app" class="wrap hidden">
+    <div class="top">
+      <img class="logo" src="/logo-pina.png" alt="Pina" />
+      <div class="t">Painel do portal confidencial</div>
+      <a class="btn ghost small" href="/" target="_blank">Ver como cliente</a>
+      <button class="btn ghost small" id="logoutBtn">Sair</button>
+    </div>
+
+    <div class="warn hidden" id="emailWarn">Os avisos por e-mail ainda não estão configurados (faltam os segredos RESEND_API_KEY e NOTIFY_EMAIL). Os acessos continuam registrados aqui no painel.</div>
+
+    <section class="panel">
+      <h2>1 · Documento</h2>
+      <p class="desc">O PDF é convertido em imagens aqui no seu navegador. O arquivo PDF original <b>nunca</b> é enviado para o servidor, então não existe PDF para ser baixado.</p>
+      <div class="status" id="docStatus">—</div>
+      <div class="row">
+        <div><label>Nome exibido</label><input type="text" id="title" placeholder="Ex.: Brandbook Megacommerce" /></div>
+        <div><label>Arquivo PDF</label><input type="file" id="file" accept="application/pdf" /></div>
+        <button class="btn" id="uploadBtn">Publicar</button>
+      </div>
+      <div class="progress hidden" id="prog"><div></div></div>
+      <div class="error" id="upErr"></div>
+    </section>
+
+    <section class="panel">
+      <h2>2 · Senha temporária do cliente</h2>
+      <p class="desc">Gere uma senha, copie e envie ao cliente. Ao gerar uma nova, a anterior deixa de funcionar e quem estiver vendo é desconectado.</p>
+      <div class="status" id="pwStatus">—</div>
+      <div class="row">
+        <div style="max-width:220px"><label>Validade</label>
+          <select id="days">
+            <option value="1">1 dia</option>
+            <option value="3">3 dias</option>
+            <option value="7" selected>7 dias</option>
+            <option value="15">15 dias</option>
+            <option value="30">30 dias</option>
+          </select>
+        </div>
+        <button class="btn" id="genBtn">Gerar nova senha</button>
+        <button class="btn ghost" id="revokeBtn">Bloquear acesso agora</button>
+      </div>
+      <div class="pw-box hidden" id="pwBox">
+        <code id="pwValue"></code>
+        <button class="btn small" id="copyBtn">Copiar</button>
+        <span class="t" id="pwExp" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="row" style="align-items:center">
+        <div><h2>3 · Registro de acessos</h2><p class="desc" style="margin:0">Cada vez que alguém entra com a senha, aparece aqui (e chega no seu e-mail).</p></div>
+        <button class="btn ghost small" id="testEmailBtn">Testar e-mail</button>
+        <button class="btn ghost small" id="refreshBtn">Atualizar</button>
+      </div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>Data e hora</th><th>IP</th><th>Local</th><th>Provedor</th><th>VPN / Proxy</th><th>Dispositivo</th></tr></thead>
+          <tbody id="logs"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>4 · Tirar do ar</h2>
+      <p class="desc">Apaga as páginas do documento e bloqueia a senha. O registro de acessos continua disponível aqui.</p>
+      <button class="btn danger" id="deleteBtn">Apagar documento e bloquear acesso</button>
+    </section>
+  </div>
+
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    const fmt = (ts) => new Date(ts).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+    async function api(path, opts = {}) {
+      const r = await fetch("/api/admin/" + path, opts);
+      const data = await r.json().catch(() => ({}));
+      if (r.status === 401) { showLogin(); throw new Error("Sessão expirada"); }
+      if (!r.ok) throw new Error(data.error || "Erro");
+      return data;
+    }
+    const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+    function showLogin() { $("login").classList.remove("hidden"); $("app").classList.add("hidden"); }
+
+    $("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("loginErr").textContent = "";
+      const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: $("pw").value }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return ($("loginErr").textContent = d.error || "Erro");
+      $("pw").value = "";
+      boot();
+    });
+    $("logoutBtn").onclick = async () => { await post("logout"); showLogin(); };
+
+    async function boot() {
+      try { await refresh(); } catch { return showLogin(); }
+      $("login").classList.add("hidden");
+      $("app").classList.remove("hidden");
+    }
+
+    async function refresh() {
+      const s = await api("status");
+      $("emailWarn").classList.toggle("hidden", s.emailConfigured);
+      $("docStatus").innerHTML = s.doc
+        ? `Publicado: <b>${esc(s.doc.title)}</b> · ${s.doc.pages} páginas · enviado em ${fmt(s.doc.uploadedAt)}`
+        : "Nenhum documento publicado.";
+      if (!s.password) $("pwStatus").innerHTML = "Nenhuma senha ativa — ninguém consegue acessar.";
+      else if (s.password.expired) $("pwStatus").innerHTML = `A senha expirou em ${fmt(s.password.expiresAt)}. Gere uma nova se precisar.`;
+      else $("pwStatus").innerHTML = `Senha ativa até <b>${fmt(s.password.expiresAt)}</b> (gerada em ${fmt(s.password.createdAt)}).`;
+      await loadLogs();
+    }
+
+    async function loadLogs() {
+      const { logs } = await api("logs");
+      $("logs").innerHTML = logs.length
+        ? logs.map((l) => `<tr>
+            <td>${esc(fmt(l.at))}</td>
+            <td>${esc(l.ip)}</td>
+            <td>${esc([l.city, l.region, l.country].filter(Boolean).join(", ") || "—")}</td>
+            <td>${esc(l.org || "—")}${l.asn ? " <span style='color:var(--muted)'>AS" + esc(l.asn) + "</span>" : ""}</td>
+            <td class="${/^(SIM|provável)/.test(l.vpn) ? "vpn-yes" : ""}">${esc(l.vpn)}</td>
+            <td title="${esc(l.userAgent)}">${esc(l.device)}</td></tr>`).join("")
+        : `<tr><td colspan="6" class="empty">Nenhum acesso registrado ainda.</td></tr>`;
+    }
+    $("refreshBtn").onclick = () => refresh().catch((e) => alert(e.message));
+    $("testEmailBtn").onclick = async () => {
+      try { await post("test-email"); alert("E-mail de teste enviado! Confira sua caixa de entrada (e o spam)."); }
+      catch (e) { alert("Falhou: " + e.message); }
+    };
+
+    // --------- senha ---------
+    $("genBtn").onclick = async () => {
+      if (!confirm("Gerar uma nova senha? A senha anterior deixará de funcionar.")) return;
+      const d = await post("password", { days: Number($("days").value) });
+      $("pwValue").textContent = d.password;
+      $("pwExp").textContent = `válida até ${fmt(d.expiresAt)}`;
+      $("pwBox").classList.remove("hidden");
+      refresh();
+    };
+    $("copyBtn").onclick = async () => {
+      await navigator.clipboard.writeText($("pwValue").textContent);
+      $("copyBtn").textContent = "Copiada ✓";
+      setTimeout(() => ($("copyBtn").textContent = "Copiar"), 1800);
+    };
+    $("revokeBtn").onclick = async () => {
+      if (!confirm("Bloquear o acesso agora? Quem estiver vendo será desconectado.")) return;
+      await post("revoke");
+      $("pwBox").classList.add("hidden");
+      refresh();
+    };
+    $("deleteBtn").onclick = async () => {
+      if (!confirm("Apagar o documento do portal e bloquear o acesso? Isso não pode ser desfeito.")) return;
+      await api("document", { method: "DELETE" });
+      await post("revoke");
+      $("pwBox").classList.add("hidden");
+      refresh();
+    };
+
+    // --------- upload (PDF -> imagens, no navegador) ---------
+    $("uploadBtn").onclick = async () => {
+      const file = $("file").files[0];
+      $("upErr").textContent = "";
+      if (!file) return ($("upErr").textContent = "Escolha o arquivo PDF.");
+      const btn = $("uploadBtn"), bar = $("prog").firstElementChild;
+      btn.disabled = true;
+      $("prog").classList.remove("hidden");
+      try {
+        const pdfjs = await import("/vendor/pdf.min.mjs");
+        pdfjs.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.mjs";
+        const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+        const sizes = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const v = (await pdf.getPage(i)).getViewport({ scale: 1 });
+          sizes.push({ w: Math.round(v.width), h: Math.round(v.height) });
+        }
+        const title = $("title").value.trim() || file.name.replace(/\.pdf$/i, "");
+        const { version } = await post("upload/start", { title, pages: pdf.numPages, sizes });
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const base = page.getViewport({ scale: 1 });
+          const scale = Math.min(2200 / Math.max(base.width, base.height), 4);
+          const vp = page.getViewport({ scale });
+          const c = document.createElement("canvas");
+          c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.86));
+          await api(`upload/page/${version}/${i}`, { method: "PUT", body: blob });
+          bar.style.width = `${Math.round((i / pdf.numPages) * 100)}%`;
+          page.cleanup();
+        }
+        await post("upload/finish");
+        $("file").value = "";
+        await refresh();
+        alert("Documento publicado! Agora gere a senha para o cliente.");
+      } catch (e) {
+        $("upErr").textContent = "Erro ao publicar: " + e.message;
+      } finally {
+        btn.disabled = false;
+        setTimeout(() => { $("prog").classList.add("hidden"); bar.style.width = "0"; }, 800);
+      }
+    };
+
+    boot();
+  </script>
+</body>
+</html>
